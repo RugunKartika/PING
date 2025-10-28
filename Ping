@@ -1,1 +1,98 @@
-Program ini melakukan ping ke suatu host beberapa kali untuk mengukur latency (waktu respons), menghitung statistik seperti rata-rata, minimum, maksimum, serta menilai kualitas koneksi jaringan berdasarkan hasil tersebut.
+import platform
+import subprocess
+import re
+import statistics
+
+def ping_host(host, count=4):
+    """Melakukan ping ke host dan mengembalikan hasil latency per ping."""
+    system = platform.system().lower()
+
+    # Tentukan format perintah ping untuk Windows vs Linux/macOS
+    if system == "windows":
+        cmd = ["ping", "-n", str(count), host]
+        regex = r"Average = (\d+)ms"
+    else:
+        cmd = ["ping", "-c", str(count), host]
+        regex = r"time[=<]([\d\.]+) ms"
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        output = result.stdout
+
+        # Ambil semua nilai waktu (latency) dari output
+        latencies = re.findall(regex, output)
+        latencies = [float(x) for x in latencies]
+
+        # Hitung statistik
+        if latencies:
+            avg = round(statistics.mean(latencies), 2)
+            mini = round(min(latencies), 2)
+            maxi = round(max(latencies), 2)
+            success = len(latencies)
+            loss = count - success
+            return {
+                "host": host,
+                "latencies": latencies,
+                "avg": avg,
+                "min": mini,
+                "max": maxi,
+                "success": success,
+                "loss": loss
+            }
+        else:
+            return {"host": host, "latencies": [], "success": 0, "loss": count}
+
+    except subprocess.TimeoutExpired:
+        return {"host": host, "latencies": [], "success": 0, "loss": count, "error": "Timeout"}
+    except Exception as e:
+        return {"host": host, "latencies": [], "success": 0, "loss": count, "error": str(e)}
+
+def main():
+    print("=== Program PING Checker ===")
+    host = input("Masukkan IP atau domain yang ingin diping: ").strip()
+    if not host:
+        print("⚠️  Alamat tidak boleh kosong.")
+        return
+
+    count = input("Berapa kali ping (default 4): ").strip()
+    count = int(count) if count.isdigit() else 4
+
+    print(f"\n🔍 Melakukan ping ke {host} sebanyak {count} kali...\n")
+
+    result = ping_host(host, count)
+
+    # Tampilkan hasil tiap ping (kalau ada)
+    if result["latencies"]:
+        for i, t in enumerate(result["latencies"], 1):
+            print(f"Ping ke-{i}: {t} ms")
+    else:
+        print("Tidak ada respon dari host!")
+
+    print("\n📊 Ringkasan Hasil:")
+    print(f"- Host        : {result['host']}")
+    print(f"- Berhasil    : {result['success']}/{count}")
+    print(f"- Gagal       : {result['loss']}")
+    if result["latencies"]:
+        print(f"- Rata-rata   : {result['avg']} ms")
+        print(f"- Terendah    : {result['min']} ms")
+        print(f"- Tertinggi   : {result['max']} ms")
+
+    if result.get("error"):
+        print(f"⚠️  Error: {result['error']}")
+
+    # Kualitas koneksi (opsional)
+    if result["success"] > 0:
+        if result["avg"] < 50:
+            kualitas = "SANGAT BAIK ✅"
+        elif result["avg"] < 100:
+            kualitas = "BAIK 👍"
+        elif result["avg"] < 200:
+            kualitas = "CUKUP ⚠️"
+        else:
+            kualitas = "BURUK ❌"
+        print(f"- Kualitas    : {kualitas}")
+
+    print("\nSelesai ✅")
+
+if __name__ == "__main__":
+    main()
